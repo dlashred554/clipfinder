@@ -302,17 +302,13 @@ function buildSegments(duration, target = DEFAULT_CLIP_LENGTH){
   // Si el vídeo es más corto que la duración pedida, se usa el vídeo entero.
   const length = Math.min(target, duration);
 
-  // Nº de clips deseado según la duración del vídeo...
-  let desired;
-  if(duration <= 90) desired = 3;
-  else if(duration <= 180) desired = 4;
-  else if(duration <= 600) desired = 6;
-  else desired = 8;
-
-  // ...limitado a los que caben sin solaparse.
-  let count = Math.max(1, Math.min(desired, Math.floor(duration / length)));
-  // Si solo cabría 1 clip pero el vídeo da para 2 con algo de solape, se generan 2.
-  if(count === 1 && desired > 1 && duration >= length * 1.5) count = 2;
+  // Siempre se generan 10 clips, repartidos a lo largo de todo el vídeo.
+  // Si el vídeo no da para 10 sin solaparse, se solapan un poco entre sí
+  // en vez de generar menos (salvo que el vídeo sea muy corto: entonces
+  // se genera solo 1, para no repetir el mismo clip 10 veces).
+  const desired = 10;
+  let count = desired;
+  if(duration < length * 1.5) count = 1;
 
   const usable = Math.max(0, duration - length);
   const segments = [];
