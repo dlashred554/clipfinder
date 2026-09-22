@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClipFinder — Clips automáticos</title>
+  <meta name="description" content="Crea clips MP4 automáticamente desde un vídeo largo.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">CF</div>
+      <div>
+        <strong>ClipFinder</strong>
+        <span>Automatic Video Clipper</span>
+      </div>
+    </div>
+    <div class="status"><span class="status-dot"></span> Conversión local</div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div class="eyebrow">CLIPS AUTOMÁTICOS</div>
+      <h1>Convierte un vídeo largo en varios clips.</h1>
+      <p>Sube tu vídeo y ClipFinder preparará automáticamente varios fragmentos en formato MP4. No tendrás que recortar cada uno manualmente.</p>
+    </section>
+
+    <section class="panel upload-panel">
+      <div class="panel-title">
+        <div>
+          <h2>1. Sube tu vídeo</h2>
+          <p>MP4 recomendado (H.264 + AAC). Un vídeo de 3 minutos funciona perfectamente.</p>
+        </div>
+        <span class="step">01</span>
+      </div>
+
+      <label class="dropzone" id="dropzone" for="videoInput">
+        <div class="upload-icon">↑</div>
+        <strong>Selecciona un vídeo</strong>
+        <span>o arrástralo aquí</span>
+        <small>La conversión se hace en tu navegador; no se sube a un servidor.</small>
+        <input id="videoInput" type="file" accept="video/mp4,video/quicktime,video/webm,video/*">
+      </label>
+
+      <div id="fileInfo" class="file-info hidden"></div>
+
+      <video id="sourceVideo" class="source-video hidden" controls playsinline></video>
+
+      <fieldset class="length-picker" id="lengthPicker">
+        <legend>Duración de cada clip</legend>
+        <label class="length-option">
+          <input type="radio" name="clipLength" value="15">
+          <span><b>≈ 15 s</b><small>Menos de 30 s</small></span>
+        </label>
+        <label class="length-option">
+          <input type="radio" name="clipLength" value="25" checked>
+          <span><b>≈ 25 s</b><small>Menos de 30 s</small></span>
+        </label>
+        <label class="length-option">
+          <input type="radio" name="clipLength" value="40">
+          <span><b>≈ 40 s</b><small>De 30 a 60 s</small></span>
+        </label>
+        <label class="length-option">
+          <input type="radio" name="clipLength" value="60">
+          <span><b>≈ 60 s</b><small>De 30 a 60 s</small></span>
+        </label>
+      </fieldset>
+
+      <div class="reaction-box" id="reactionBox">
+        <label class="reaction-toggle">
+          <input type="checkbox" id="reactionEnable">
+          <span>
+            <b>Añadir reacción encima (opcional)</b>
+            <small>Superpone una imagen o vídeo en la franja superior del clip. Debajo se mantiene el vídeo con fondo desenfocado, igual que en 9:16 / 16:9.</small>
+          </span>
+        </label>
+
+        <div class="reaction-upload hidden" id="reactionUpload">
+          <label class="reaction-filebtn" for="reactionInput">
+            <span id="reactionFileLabel">Elegir imagen o vídeo…</span>
+            <input id="reactionInput" type="file" accept="image/*,video/mp4,video/quicktime,video/webm">
+          </label>
+          <button type="button" id="reactionClear" class="button button-secondary hidden">Quitar</button>
+        </div>
+
+        <p class="reaction-note">Solo se aplica al descargar en formato 9:16 o 16:9 (no en “Original”, que no recodifica).</p>
+      </div>
+
+      <div class="actions">
+        <button id="generateBtn" class="button button-primary" disabled>
+          Generar clips automáticamente
+        </button>
+      </div>
+
+      <div id="progressArea" class="progress-area hidden">
+        <div class="progress-head">
+          <span id="progressText">Preparando...</span>
+          <span id="progressPercent">0%</span>
+        </div>
+        <div class="progress-track"><div id="progressBar"></div></div>
+        <p id="progressDetail">En “Original” se usa copia directa para acelerar al máximo.</p><pre id="ffmpegLog" class="ffmpeg-log hidden"></pre>
+      </div>
+    </section>
+
+    <section id="resultsSection" class="panel results-panel hidden">
+      <div class="panel-title">
+        <div>
+          <h2>2. Tus clips</h2>
+          <p id="resultsSummary">Clips preparados automáticamente.</p>
+        </div>
+        <span class="step">02</span>
+      </div>
+      <fieldset class="length-picker format-picker" id="formatPicker">
+        <legend>Formato al descargar</legend>
+        <label class="length-option">
+          <input type="radio" name="downloadFormat" value="original" checked>
+          <span><b>Original</b><small>Sin recodificar · más rápido</small></span>
+        </label>
+        <label class="length-option">
+          <input type="radio" name="downloadFormat" value="9x16">
+          <span><b>9:16</b><small>Vertical · fondo desenfocado</small></span>
+        </label>
+        <label class="length-option">
+          <input type="radio" name="downloadFormat" value="16x9">
+          <span><b>16:9</b><small>Horizontal · fondo desenfocado</small></span>
+        </label>
+      </fieldset>
+
+      <div id="results" class="results-grid"></div>
+    </section>
+
+    <section id="notice" class="notice hidden"></section>
+
+    <section class="how panel">
+      <div>
+        <h2>¿Cómo funciona?</h2>
+        <p>ClipFinder divide el vídeo en varios fragmentos cortos y genera cada uno como un archivo MP4 independiente.</p>
+      </div>
+      <div class="how-list">
+        <div><span>1</span><b>Sube</b><small>Tu vídeo largo</small></div>
+        <div><span>2</span><b>Genera</b><small>Clips automáticamente</small></div>
+        <div><span>3</span><b>Descarga</b><small>MP4 individuales</small></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>ClipFinder</span>
+    <span>Conversión local en el navegador</span>
+  </footer>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
