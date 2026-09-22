@@ -107,33 +107,19 @@
         </label>
       </fieldset>
 
-      <fieldset class="length-picker reaction-picker" id="reactionPicker">
-        <legend>Reacción arriba <span class="legend-note">(solo en 9:16 / 16:9)</span></legend>
-        <label class="length-option reaction-option">
-          <input type="radio" name="reaction" value="none" checked>
-          <span><b>Ninguna</b></span>
+      <div class="reaction-upload" id="reactionUpload">
+        <div class="reaction-upload-head">
+          <b>Vídeo de reacción arriba</b>
+          <span>Opcional · se coloca como franja arriba · solo en 9:16 / 16:9</span>
+        </div>
+        <label class="reaction-dropzone" id="reactionDropzone" for="reactionVideoInput">
+          <span id="reactionDropzoneText">Selecciona un vídeo o arrástralo aquí</span>
+          <input id="reactionVideoInput" type="file" accept="video/mp4,video/quicktime,video/webm,video/*">
         </label>
-        <label class="length-option reaction-option">
-          <input type="radio" name="reaction" value="😂">
-          <span><b>😂</b></span>
-        </label>
-        <label class="length-option reaction-option">
-          <input type="radio" name="reaction" value="🔥">
-          <span><b>🔥</b></span>
-        </label>
-        <label class="length-option reaction-option">
-          <input type="radio" name="reaction" value="❤️">
-          <span><b>❤️</b></span>
-        </label>
-        <label class="length-option reaction-option">
-          <input type="radio" name="reaction" value="😮">
-          <span><b>😮</b></span>
-        </label>
-        <label class="length-option reaction-option">
-          <input type="radio" name="reaction" value="🎉">
-          <span><b>🎉</b></span>
-        </label>
-      </fieldset>
+        <div id="reactionFileInfo" class="file-info hidden"></div>
+        <button type="button" id="removeReactionBtn" class="button button-secondary hidden">Quitar vídeo de reacción</button>
+        <video id="reactionProbe" class="hidden" muted playsinline></video>
+      </div>
 
       <div id="results" class="results-grid"></div>
     </section>

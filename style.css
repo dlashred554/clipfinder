@@ -149,8 +149,19 @@ footer{border-top:1px solid var(--line);padding:24px 5vw;display:flex;justify-co
 @media(max-width:720px){.format-picker{grid-template-columns:1fr}}
 
 .legend-note{text-transform:none;letter-spacing:0;color:#9a958b;font-weight:400}
-.reaction-picker{grid-template-columns:repeat(6,minmax(0,1fr));margin:0 0 20px}
-.reaction-picker .reaction-option span{padding:10px 6px}
-.reaction-picker .reaction-option b{font-size:20px;font-weight:400}
-.reaction-picker[disabled]{opacity:.4;pointer-events:none}
-@media(max-width:720px){.reaction-picker{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.reaction-upload{margin:0 0 20px;border-top:1px solid var(--line);padding-top:18px}
+.reaction-upload-head{display:flex;flex-direction:column;gap:3px;margin-bottom:12px}
+.reaction-upload-head b{font-size:14px;font-weight:500}
+.reaction-upload-head span{font:11px Arial,sans-serif;color:var(--muted)}
+.reaction-dropzone{
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  min-height:70px;border:1px dashed #bdb5a8;background:var(--paper2);
+  cursor:pointer;transition:.2s;padding:12px;
+}
+.reaction-dropzone:hover,.reaction-dropzone.dragover{border-color:var(--accent);background:#f5eee5}
+.reaction-dropzone span{font:13px Arial,sans-serif;color:var(--muted)}
+.reaction-dropzone input{display:none}
+#reactionFileInfo{margin-top:10px}
+#removeReactionBtn{margin-top:10px}
+.reaction-upload.disabled{opacity:.45;pointer-events:none}

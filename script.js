@@ -54,27 +54,136 @@ function getDownloadFormat(){
   return checked && FORMATS[checked.value] ? checked.value : "original";
 }
 
-// La reacción (emoji arriba del clip) solo tiene sentido cuando se recodifica
-// (formatos 9:16 / 16:9). En "Original" se usa copia directa (-c copy) y no
-// hay manera de dibujar nada encima sin perder esa velocidad.
-function getSelectedReaction(){
-  const checked = document.querySelector('input[name="reaction"]:checked');
-  if(!checked || checked.value === "none") return null;
-  return checked.value;
+// El vídeo de reacción (franja arriba del clip) solo tiene sentido cuando se
+// recodifica (formatos 9:16 / 16:9). En "Original" se usa copia directa
+// (-c copy) y no hay manera de dibujar nada encima sin perder esa velocidad.
+let reactionFile = null;          // File del vídeo de reacción
+let reactionDuration = 0;         // duración del vídeo de reacción, en segundos
+let reactionVideoUrl = null;      // URL de objeto para sondear su duración
+let reactionInputPromise = null;  // vídeo de reacción ya escrito en la memoria de FFmpeg
+let reactionInputName = null;
+
+function hasReactionVideo(){
+  return !!reactionFile;
 }
 
 function updateReactionAvailability(){
-  const picker = document.getElementById("reactionPicker");
-  if(!picker) return;
+  const box = document.getElementById("reactionUpload");
+  const input = document.getElementById("reactionVideoInput");
+  if(!box) return;
   const disabled = getDownloadFormat() === "original";
-  picker.disabled = disabled;
-  if(disabled) picker.setAttribute("disabled",""); else picker.removeAttribute("disabled");
+  box.classList.toggle("disabled", disabled);
+  if(input) input.disabled = disabled;
 }
 
 document.querySelectorAll('input[name="downloadFormat"]').forEach(el => {
   el.addEventListener("change", updateReactionAvailability);
 });
 updateReactionAvailability();
+
+function updateReactionFileInfo(){
+  const info = document.getElementById("reactionFileInfo");
+  const removeBtn = document.getElementById("removeReactionBtn");
+  const dzText = document.getElementById("reactionDropzoneText");
+  if(!info || !removeBtn || !dzText) return;
+  if(!reactionFile){
+    info.classList.add("hidden");
+    removeBtn.classList.add("hidden");
+    dzText.textContent = "Selecciona un vídeo o arrástralo aquí";
+    return;
+  }
+  const durationText = reactionDuration ? formatTime(reactionDuration) : "leyendo duración…";
+  info.innerHTML = `<b>${escapeHtml(reactionFile.name)}</b><span>${formatSize(reactionFile.size)} · ${durationText}</span>`;
+  info.classList.remove("hidden");
+  removeBtn.classList.remove("hidden");
+  dzText.textContent = "Cambiar vídeo de reacción";
+}
+
+function resetReactionInput(){
+  if(ffmpegReady && reactionInputName){
+    const old = reactionInputName;
+    ffmpeg.deleteFile(old).catch(()=>{});
+  }
+  reactionInputPromise = null;
+  reactionInputName = null;
+}
+
+function setReactionFile(file){
+  if(!file) return;
+  const looksVideo = file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv|mpeg|mpg)$/i.test(file.name);
+  if(!looksVideo){
+    showNotice("Ese archivo no parece ser un vídeo compatible para la reacción.","error");
+    return;
+  }
+
+  resetReactionInput();
+  clearOutputs(); // los clips ya generados dejan de valer: cambia lo que se superpone
+
+  reactionFile = file;
+  reactionDuration = 0;
+  if(reactionVideoUrl) URL.revokeObjectURL(reactionVideoUrl);
+  reactionVideoUrl = URL.createObjectURL(file);
+
+  const probe = document.getElementById("reactionProbe");
+  probe.onloadedmetadata = () => {
+    const d = Number(probe.duration);
+    reactionDuration = Number.isFinite(d) && d > 0 ? d : 0;
+    updateReactionFileInfo();
+  };
+  probe.src = reactionVideoUrl;
+  probe.load();
+
+  updateReactionFileInfo();
+}
+
+function clearReactionFile(){
+  resetReactionInput();
+  clearOutputs();
+  reactionFile = null;
+  reactionDuration = 0;
+  if(reactionVideoUrl){ URL.revokeObjectURL(reactionVideoUrl); reactionVideoUrl = null; }
+  const input = document.getElementById("reactionVideoInput");
+  if(input) input.value = "";
+  updateReactionFileInfo();
+}
+
+// Escribe el vídeo de reacción en la memoria de FFmpeg una sola vez
+// (se reutiliza entre clips y formatos mientras no cambie el fichero).
+function ensureReactionInput(){
+  if(!reactionFile) return Promise.resolve(null);
+  if(!reactionInputPromise){
+    const file = reactionFile;
+    reactionInputPromise = (async () => {
+      await ensureEngine();
+      const name = `reaction_input.${getInputExtension(file)}`;
+      await ffmpeg.writeFile(name, await fetchFile(file));
+      reactionInputName = name;
+      return name;
+    })().catch(err => { reactionInputPromise = null; throw err; });
+  }
+  return reactionInputPromise;
+}
+
+// Punto de entrada del vídeo de reacción para un clip concreto: si la
+// reacción es lo bastante larga se sincroniza con el mismo instante que el
+// clip (se grabó viendo el vídeo entero); si no llega, se recorta desde
+// donde mejor quepa para que al menos se vea toda su duración.
+function reactionSeekFor(segment, duration){
+  if(!reactionDuration) return 0;
+  if(segment.start + duration <= reactionDuration) return segment.start;
+  return Math.max(0, reactionDuration - duration);
+}
+
+const reactionVideoInput = document.getElementById("reactionVideoInput");
+const reactionDropzone = document.getElementById("reactionDropzone");
+reactionVideoInput.addEventListener("change", e => setReactionFile(e.target.files[0]));
+reactionDropzone.addEventListener("dragover", e => {e.preventDefault();reactionDropzone.classList.add("dragover")});
+reactionDropzone.addEventListener("dragleave", () => reactionDropzone.classList.remove("dragover"));
+reactionDropzone.addEventListener("drop", e => {
+  e.preventDefault();reactionDropzone.classList.remove("dragover");
+  setReactionFile(e.dataTransfer.files[0]);
+});
+document.getElementById("removeReactionBtn").addEventListener("click", clearReactionFile);
 
 function formatTime(seconds){
   seconds = Math.max(0, Number(seconds) || 0);
@@ -289,7 +398,8 @@ function ensureEngine(){
       enginePromise = null;
       try{ ffmpeg && ffmpeg.terminate(); }catch(_){}
       ffmpeg = null;
-      reactionFileCache.clear(); // el FS del motor anterior ya no existe
+      reactionInputPromise = null; // el FS del motor anterior ya no existe
+      reactionInputName = null;
       throw err;
     });
   }
@@ -310,59 +420,6 @@ function ensureInput(){
     })().catch(err => { inputPromise = null; throw err; });
   }
   return inputPromise;
-}
-
-/* ---------- Reacción (sticker de emoji arriba del clip) ---------- */
-
-const reactionFileCache = new Map(); // nombre de fichero -> Promise<nombre> ya escrito en FFmpeg
-
-function reactionFileName(emoji){
-  const codepoints = Array.from(emoji).map(c => c.codePointAt(0).toString(16)).join("-");
-  return `reaction_${codepoints}.png`;
-}
-
-// Dibuja el emoji en un <canvas> (así se aprovecha el renderizado a color del
-// navegador) sobre un círculo semitransparente, para que se lea bien encima
-// de cualquier vídeo. Devuelve el PNG como Uint8Array.
-function drawReactionPNG(emoji, size = 240){
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, size, size);
-
-  ctx.beginPath();
-  ctx.arc(size/2, size/2, size*0.46, 0, Math.PI*2);
-  ctx.fillStyle = "rgba(20,17,13,0.32)";
-  ctx.fill();
-
-  ctx.font = `${Math.floor(size*0.6)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(emoji, size/2, size/2 + size*0.04);
-
-  return new Promise((resolve,reject) => {
-    canvas.toBlob(blob => {
-      if(!blob){ reject(new Error("No se ha podido generar la imagen de la reacción.")); return; }
-      blob.arrayBuffer().then(buf => resolve(new Uint8Array(buf))).catch(reject);
-    }, "image/png");
-  });
-}
-
-// Escribe el PNG de la reacción en la memoria de FFmpeg una sola vez
-// (se reutiliza entre clips y formatos mientras dure la sesión del motor).
-function ensureReactionFile(emoji){
-  const name = reactionFileName(emoji);
-  if(!reactionFileCache.has(name)){
-    const promise = (async () => {
-      await ensureEngine();
-      const data = await drawReactionPNG(emoji);
-      await ffmpeg.writeFile(name, data);
-      return name;
-    })().catch(err => { reactionFileCache.delete(name); throw err; });
-    reactionFileCache.set(name, promise);
-  }
-  return reactionFileCache.get(name);
 }
 
 function resetInput(){
@@ -397,7 +454,7 @@ function warmUp(){
 
 /* ---------- Exportación de un clip ---------- */
 
-function buildExportArgs(fmt, start, duration, input, output, reactionFile){
+function buildExportArgs(fmt, start, duration, input, output, reactionFile, reactionSeek){
   // ORIGINAL: copia directa, sin recodificar. Es la ruta mas rapida.
   // (No admite reacción: al copiar el stream tal cual no hay forma de dibujar nada encima.)
   if(fmt === "original"){
@@ -418,9 +475,10 @@ function buildExportArgs(fmt, start, duration, input, output, reactionFile){
   const {w:W,h:H} = FORMATS[fmt];
   const srcAspect = videoWidth && videoHeight ? videoWidth/videoHeight : 16/9;
   const hasReaction = !!reactionFile;
-  // Si hay reacción, el resultado del fondo (con o sin desenfoque) se deja
-  // en [base] en vez de en [v]; la reacción se superpone después sobre [base]
-  // para no perder el efecto de desenfoque que ya se aplicó.
+  // Si hay vídeo de reacción, el resultado del fondo (con o sin desenfoque)
+  // se deja en [base] en vez de en [v]; la franja de reacción se superpone
+  // después encima de [base], así el desenfoque de fondo no se pierde,
+  // simplemente queda debajo de la franja de arriba.
   const finalLabel = hasReaction ? "[base]" : ",format=yuv420p[v]";
 
   let filter;
@@ -437,11 +495,13 @@ function buildExportArgs(fmt, start, duration, input, output, reactionFile){
 
   const args = ["-ss", String(start), "-i", input];
   if(hasReaction){
-    args.push("-i", reactionFile);
-    // Tamaño y margen de la reacción relativos al frame de salida.
-    const rw = Math.round(W * 0.26);
-    const topMargin = Math.round(H * 0.055);
-    filter += `;[1:v]scale=${rw}:-1[rx];[base][rx]overlay=(W-w)/2:${topMargin},format=yuv420p[v]`;
+    // Segunda entrada: el vídeo de reacción, ya buscado (-ss) a su propio instante.
+    args.push("-ss", String(reactionSeek), "-i", reactionFile);
+    // Franja a todo lo ancho arriba, recortada (no deformada) para llenarla.
+    const stripH = Math.round(H * 0.34);
+    filter +=
+      `;[1:v]scale=${W}:${stripH}:force_original_aspect_ratio=increase,crop=${W}:${stripH},setsar=1[rx];` +
+      `[base][rx]overlay=0:0,format=yuv420p[v]`;
   }
 
   args.push(
@@ -460,10 +520,9 @@ function cancelledError(){
 }
 
 // Convierte UN clip, directamente desde el vídeo original (una sola codificación).
-// reactionEmoji es opcional (null = sin reacción); se ignora en fmt "original".
-function renderClip(index, segment, fmt, reactionEmoji, onProgress){
-  const reaction = fmt !== "original" ? reactionEmoji : null;
-  const key = `${index}-${fmt}-${reaction || "none"}`;
+function renderClip(index, segment, fmt, onProgress){
+  const useReaction = fmt !== "original" && hasReactionVideo();
+  const key = `${index}-${fmt}-${useReaction ? "vid" : "none"}`;
   if(outputCache.has(key)) return Promise.resolve(outputCache.get(key));
 
   const token = outputToken;
@@ -472,14 +531,15 @@ function renderClip(index, segment, fmt, reactionEmoji, onProgress){
     if(outputCache.has(key)) return outputCache.get(key);
 
     const input = await ensureInput();
-    const reactionFile = reaction ? await ensureReactionFile(reaction) : null;
-    const output = `out_${index}_${fmt}.mp4`;
     const duration = Math.max(1, segment.end - segment.start);
+    const reactionFilePath = useReaction ? await ensureReactionInput() : null;
+    const reactionSeek = reactionFilePath ? reactionSeekFor(segment, duration) : 0;
+    const output = `out_${index}_${fmt}.mp4`;
 
     currentJob = {kind:"export", duration, onProgress};
     try{
       onProgress(0);
-      const code = await ffmpeg.exec(buildExportArgs(fmt, segment.start, duration, input, output, reactionFile));
+      const code = await ffmpeg.exec(buildExportArgs(fmt, segment.start, duration, input, output, reactionFilePath, reactionSeek));
       if(code !== 0) throw new Error(`FFmpeg terminó con código ${code}. Mira el registro de abajo.`);
       const data = await ffmpeg.readFile(output);
       await ffmpeg.deleteFile(output);
@@ -574,14 +634,13 @@ function addClipCard(index,segment){
     if(dl.classList.contains("is-busy")) return;
 
     const fmt = getDownloadFormat();
-    const reaction = getSelectedReaction();
     const fmtLabel = fmt === "original" ? "Original · rápido" : FORMATS[fmt].label;
-    const cacheKey = `${index}-${fmt}-${fmt !== "original" && reaction ? reaction : "none"}`;
+    const cacheKey = `${index}-${fmt}-${fmt !== "original" && hasReactionVideo() ? "vid" : "none"}`;
     dl.classList.add("is-busy");
     dl.textContent = outputCache.has(cacheKey) ? "Descargando…" : "En cola…";
 
     try{
-      const url = await renderClip(index, segment, fmt, reaction, p => {
+      const url = await renderClip(index, segment, fmt, p => {
         dl.textContent = `Convirtiendo ${fmtLabel}… ${Math.round(p*100)}%`;
         setProgress(p*100, `Generando clip ${index} (${fmtLabel})…`, `${formatTime(segment.start)} → ${formatTime(segment.end)}`);
       });
